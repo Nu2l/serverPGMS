@@ -2,6 +2,10 @@ var express = require("express");
 var mysql = require("mysql");
 var bodyParser = require("body-parser");
 var md5 = require('MD5');
+var busboy = require('connect-busboy'); //middleware for form/file upload
+var path = require('path');     //used for file path
+var fs = require('fs-extra');
+var inspect = require('util').inspect;   //File System - for file manipulation
 var rest = function REST_ROUTER(router, connection, md5) {
     var self = this;
     self.handleRoutes(router, connection, md5);
@@ -21,6 +25,7 @@ REST.prototype.connectMysql = function() {
         host: 'localhost',
         user: 'admin_pgms',
         password: '123456',
+        dateStrings: 'true',
         database: 'admin_pgms',
         debug: false
     });
@@ -31,36 +36,39 @@ REST.prototype.connectMysql = function() {
             self.configureExpress(connection);
         }
     });
+    function keepAlive() {
+        pool.getConnection(function(err, connection) {
+            if (err) {
+                return;
+            }
+            connection.ping();
+            connection.release();
+
+            // console.log("CHECK CONN MYSQL");
+        });
+    }
+    console.log(new Date());
+    setInterval(keepAlive, 30000);
 }
 
 REST.prototype.configureExpress = function(connection) {
     var self = this;
     app.use(bodyParser.urlencoded({extended: true}));
     app.use(bodyParser.json());
+
+    app.use(busboy());
+    app.use(express.static(path.join(__dirname, 'upload')));
+
     var router = express.Router();
     app.use('/api', router);
     router.get("/", function(req, res) {
         res.json({"Message": "Hello World !"});
 
     });
-    router.post("/users", function(req, res) {
-        var query = "INSERT INTO ??(??,??) VALUES (?,?)";
-        var table = [
-            "user_login",
-            "user_email",
-            "user_password",
-            req.body.email,
-            md5(req.body.password)
-        ];
-        query = mysql.format(query, table);
-        connection.query(query, function(err, rows) {
-            if (err) {
-                res.json({"Error": true, "Message": "Error executing MySQL query"});
-            } else {
-                res.json({"Error": false, "Message": "User Added !"});
-            }
-        });
-    });
+
+    //**********
+    // START USER SECTION
+    //**********
     router.get("/user/:user/:pass", function(req, res) {
         var query = "SELECT * FROM user WHERE username = ? AND password = ?";
         console.log(req.body);
@@ -113,16 +121,19 @@ REST.prototype.configureExpress = function(connection) {
                     });
                 } else {
                     let encrptPass = md5(req.body.pass);
+                    var shopID = rows[0].shopID;
+                    var userID = rows[0].userID;
                     var shopName = rows[0].shopName;
                     console.log(rows[0].shopName);
                     console.log(encrptPass);
                     console.log(rows[0].password);
-                    console.log("shopname = " + shopName);
                     if (encrptPass == rows[0].password) {
                         res.json({
                             "Error": false,
                             "Message": "Welcome Back !",
-                            "ShopName": '' + shopName + ''
+                            "shopID":  shopID ,
+                            "userID":  userID  ,
+                            "shopName": '' + shopName + ''
                         });
                     } else {
                         res.json({"Error": false, "Message": "Incorrect username or password !"});
@@ -132,6 +143,9 @@ REST.prototype.configureExpress = function(connection) {
             }
         });
     });
+    //**********
+    // START SHOP SECTION
+    //**********
     router.post("/shop", function(req, res) {
         var query = "SELECT * FROM shop WHERE shopName = ?";
         var table = [req.body.shopName];
@@ -145,15 +159,14 @@ REST.prototype.configureExpress = function(connection) {
         console.log(table);
         query = mysql.format(query, table);
         connection.query(query, function(err, rows) {
-
             if (err) {
                 res.json({"Error": true, "Message": "Error executing MySQL query"});
             } else {
                 if (rows.length == 0) {
+                    console.log('shop not exist');
                     if (role == "owner") {
                         let query2 = "INSERT INTO shop(??,??) VALUES(?,?)";
                         let table2 = ["shopName", "keyShop", req.body.shopName, req.body.shopPass];
-
                         query2 = mysql.format(query2, table2);
                         console.log(query2);
                         connection.query(query2, function(err, rows) {
@@ -161,32 +174,33 @@ REST.prototype.configureExpress = function(connection) {
                             if (err) {
                                 res.json({"Error": true, "Message": "Error executing MySQL query"});
                             } else {
-                                let query2 = "SELECT * FROM shop WHERE shopName =?";
-                                let table2 = [req.body.shopName];
+                                let query2 = "SELECT shop.shopID , user.userID FROM `shop` JOIN user WHERE userName = ? and shopName = ?";
+                                let table2 = [req.body.userName, req.body.shopName];
 
                                 query2 = mysql.format(query2, table2);
                                 console.log(query2);
                                 connection.query(query2, function(err, rows) {
                                     console.log("UPDATE");
                                     console.log(rows);
+                                    let userID = rows[0].userID;
+                                    let shopID = rows[0].shopID;
                                     if (err) {
                                         res.json({"Error": true, "Message": "Error executing MySQL query"});
                                     } else {
-                                        let queryUpdate = "UPDATE user SET shopID = ? WHERE username = ?";
+                                        let queryUpdate = "UPDATE user SET shopID = ?,type = 'owner' WHERE username = ?";
                                         let tableUpdate = [rows[0].shopID, req.body.userName];
                                         queryUpdate = mysql.format(queryUpdate, tableUpdate);
                                         console.log(queryUpdate);
                                         connection.query(queryUpdate, function(err, rows) {
+
                                             if (err) {
                                                 res.json({"Error": true, "Message": "Error executing MySQL query"});
                                             } else {
-                                                res.json({"Error": false, "Message": "Your shop has bee created !"});
+                                                res.json({"Error": false, "Message": "Your shop has bee created !", "userID":userID, "shopID" :shopID});
                                             }
                                         });
-
                                     }
                                 });
-
                             }
                         });
                     } else {
@@ -194,15 +208,39 @@ REST.prototype.configureExpress = function(connection) {
                     }
 
                 } else {
+                    console.log('shop exist');
                     shopID = rows[0].shopID;
                     console.log(shopID);
                     if (rows[0].keyShop == pass) {
-                        if (role == "owner") {
-                            res.json({"Error": false, "Message": "Welcome Back Owner !"});
-                        } else {
-
-                            res.json({"Error": false, "Message": "Welcome to our shop !"});
+                        if(role=="owner"){
+                            res.json({"Error": false, "Message": "Please contact your real owner to become owner!"});
+                            return;
                         }
+                        else{
+                            let queryUpdate = "UPDATE user SET shopID = ?,type = 'employee' WHERE username = ?";
+                            let tableUpdate = [rows[0].shopID, req.body.userName];
+                            queryUpdate = mysql.format(queryUpdate, tableUpdate);
+                            console.log(queryUpdate);
+                            connection.query(queryUpdate, function(err, rows) {
+                                if (err) {
+                                    res.json({"Error": true, "Message": "Error executing MySQL query"});
+                                }
+                            });
+                        }
+                        let query2 = "SELECT shop.shopID , user.userID FROM `shop` JOIN user WHERE userName = ? and shopName = ?";
+                        let table2 = [req.body.userName, req.body.shopName];
+                        query2 = mysql.format(query2, table2);
+                        connection.query(query2, function(err, rows) {
+                            console.log("UPDATE");
+                            console.log(query2);
+                            console.log(rows);
+                            if (err) {
+                                res.json({"Error": true, "Message": "Error executing MySQL query"});
+                            } else {
+                                res.json({"Error": false, "Message": "Welcome to our shop !", "userID":rows[0].userID, "shopID" :rows[0].shopID});
+                            }
+                        });
+
                     } else {
                         res.json({"Error": false, "Message": "wrong password or shop not exist !"});
                     }
@@ -211,115 +249,152 @@ REST.prototype.configureExpress = function(connection) {
             }
         });
     });
+
+    //**********
+    // START TRANSACTION SECTION
+    //**********
     router.post("/transaction", function(req, res) {
-// {"userID":4,"productList":[{"productID":"1007","qty":1},{"productID":"1010","qty":1}]}
         console.log(req.body.productList[0].productID);
         var reqProduct = req.body;
-        var transaction_date = new Date().toISOString().
-        replace(/T/, ' ').
-        replace(/-/g, '').      // replace T with a space
-        replace(/ .+/, '').
-        substring(2)   ;
+        reqProduct.total == null
+            ? reqProduct.total = 0
+            : reqProduct.total = reqProduct.total;
+        reqProduct.discount == null
+            ? reqProduct.discount = 0
+            : reqProduct.discount = reqProduct.discount;
+        reqProduct.discountDetail == null
+            ? reqProduct.discountDetail = " s"
+            : reqProduct.discountDetail = reqProduct.discountDetail;
+        console.log(reqProduct.discountDetail);
+        var transaction_date = new Date().toISOString().replace(/T/, ' ').replace(/-/g, ''). // replace T with a space
+        replace(/ .+/, '').substring(2);
         console.log(transaction_date);
-        var create_date = new Date().toISOString().
-        substring(0,10).
-        concat(" 00:00:00");
+        var create_date = new Date().toISOString().substring(0, 10).concat(" 00:00:00");
         console.log(create_date);
-        var query = "SELECT * FROM transaction WHERE createAt >= ?";
-        var table = [String(create_date)];
+        var query = "SELECT * FROM transaction WHERE createAt >= ? AND shopID = ? ";
+        var table = [String(create_date), reqProduct.shopID];
         query = mysql.format(query, table);
         console.log(query);
         connection.query(query, function(err, rows) {
             console.log(rows.length);
-            let transaction_new = String(rows.length+1);
+            let transaction_new = String(rows.length + 1);
             // console.log(transaction_new.length);
-            transaction_new = transaction_date+('0000'+transaction_new).substring(transaction_new.length);
+            transaction_new = transaction_date + ('0000' + transaction_new).substring(transaction_new.length);
             // console.log(transaction_new);
             // transaction_new = transaction_new;
             // console.log(transaction_count);
-            var query = "INSERT INTO transaction(transactionID, userID, total, discount, discountDetail) VALUES(?,?,?,?,?)";
+            var query = "INSERT INTO transaction(transactionID, userID, shopID, total, discount, discountDetail) VALUES(?,?,?,?,?,?)";
             var table = [
                 transaction_new,
                 reqProduct.userID,
+                reqProduct.shopID,
                 reqProduct.total,
                 reqProduct.discount,
                 reqProduct.discountDetail
             ]
-            query = mysql.format(query,table);
-            connection.query(query, function(err,rows){
+            query = mysql.format(query, table);
+            connection.query(query, function(err, rows) {
                 if (err) {
                     console.log(err.code);
                     res.json({"Error": true, "Message": "Error executing MySQL query"});
                     console.log(query);
                     console.log("error occur");
-                }
-                else {
+                } else {
                     let query = "";
                     let queryAll = "";
-                    let arr_promise =[];
-                    for(var i = 0 ; i<reqProduct.productList.length ; i++){
+                    let arr_promise = [];
+                    for (var i = 0; i < reqProduct.productList.length; i++) {
                         console.log(i);
                         console.log(reqProduct.productList[i]);
                         console.log("in loop");
-                        console.log("productID"+reqProduct.productList[i].productID);
-                        let p = new Promise(function(rsv,rej){
+                        console.log("productID" + reqProduct.productList[i].productID);
+                        let productID = reqProduct.productList[i].productID;
+                        let qty = reqProduct.productList[i].qty;
+                        let p = new Promise(function(rsv, rej) {
                             let j = i;
-                            let query = "INSERT INTO transaction_detail(transactionID,productID,qty) VALUES (?,?,?);";
-                            var table = [
-                                transaction_new ,
-                                reqProduct.productList[i].productID,
-                                reqProduct.productList[i].qty
-                            ];
+                            let query = "INSERT INTO transactionDetail(transactionID,productID,qty) VALUES (?,?,?);";
+                            var table = [transaction_new, reqProduct.productList[i].productID, reqProduct.productList[i].qty];
                             query = mysql.format(query, table);
-                            connection.query(query, function(err, rows){
-                                if(err){
-                                    rej(j+"error\n"+query);
-                                }
-                                else{
-                                    rsv(j+"Done\n"+query);
+                            connection.query(query, function(err, rows) {
+                                if (err) {
+
+                                } else {
+                                    let query = "SELECT qty FROM product WHERE productID = ?";
+                                    var table = [productID];
+                                    query = mysql.format(query, table);
+                                    connection.query(query, function(err, rows) {
+                                        if (err) {
+                                            rej(j + "error\n" + query);
+                                        }
+                                        else{
+                                            let newQty = rows[0].qty;
+                                            newQty = newQty - qty;
+                                            let query = "UPDATE product SET qty = ? WHERE productID = ?";
+                                            var table = [newQty,productID];
+                                            query = mysql.format(query, table);
+                                            connection.query(query, function(err, rows) {
+                                                if(err){
+                                                    rej(j + "error\n" + query);
+                                                }
+                                                else{
+                                                    rsv(j + "Done\n" + query);
+                                                }
+                                            });
+                                        }
+                                    });
+
                                 }
                             });
                         });
                         arr_promise.push(p);
-                        // p.then(function (value){
-                        //     arr_promise.push(p);
-                        //     console.log(value);
-                        // },function (reason){
-                        //     arr_promise.push(p);
-                        //     console.log(reason);
-                        // });
-                        // query = "INSERT INTO transaction_detail(transactionID,productID,qty) VALUES (?,?,?);";
-                        // var table = [
-                        //     transaction_new ,
-                        //     reqProduct.productList[i].productID,
-                        //     reqProduct.productList[i].qty
-                        // ];
-                        // query = mysql.format(query, table);
-                        // queryAll = queryAll + query;
                     }
                     pAll = Promise.all(arr_promise);
-                    pAll.then(function (value){
+                    pAll.then(function(value) {
                         console.log(value[0]);
                         res.json({"Error": false, "transactionID": transaction_new});
-                    },function (reason){
+                    }, function(reason) {
                         console.log(reason);
                         res.json({"Error": true});
                     });
-
-                    // console.log(queryAll);
-                    // connection.query(queryAll, function(err, rows){
-                    //     if(err){
-                    //         res.json({"Error": true, "Message": "Error executing MySQL query in transactionDetail"});
-                    //     }
-                    //     else{
-                    //         res.json({"transactionID" : transaction_new});
-                    //     }
-                    // });
                 }
             });
         });
-
     });
+    router.get("/transaction/:shopID", function(req, res) {
+        let lQuery = "SELECT  t.transactionID, t.refTransactionID, u.username, t.total, t.discount, t.discountDetail, t.status, t.createAt from transaction t INNER JOIN user u on t.userID = u.userID WHERE t.shopID = ?";
+        let lTable = [req.params.shopID];
+        lQuery = mysql.format(lQuery, lTable);
+        connection.query(lQuery, function(err, rows) {
+            if (err) {
+                res.json({"Error": true, "Message": "Error executing MySQL query"});
+                console.log(lQuery);
+            } else {
+                res.json({"Error": false, "Message": "Success", "transaction": rows});
+                console.log(lQuery);
+            }
+        });
+    });
+
+    router.get("/transactionDetail/:transactionID/:createAt", function(req, res) {
+        let lQuery = "SELECT td.*, ph2.name, ph2.price,ph2.cost FROM ( SELECT productID ,MAX(createAt) AS createProduct FROM `productHistory` WHERE createAt <= ? GROUP BY productID ) ph1 JOIN `productHistory` ph2 ON (ph2.productID = ph1.productID AND ph1.createProduct = ph2.createAt ) INNER JOIN transactionDetail td ON td.productID = ph2.productID WHERE td.transactionID = ? ORDER BY td.transactionID";
+        let lTable = [
+            req.params.createAt.replace('T', ''),
+            req.params.transactionID
+        ];
+        lQuery = mysql.format(lQuery, lTable);
+        connection.query(lQuery, function(err, rows) {
+            if (err) {
+                res.json({"Error": true, "Message": "Error executing MySQL query"});
+                console.log(lQuery);
+            } else {
+                res.json({"Error": false, "Message": "Success", "transactionDetail": rows});
+                console.log(lQuery);
+            }
+        });
+    });
+    //**********
+    // START PRODUCT SECTION
+    //**********
     router.get("/product", function(req, res) {
         var query = "SELECT * FROM ??";
         var table = ["product"];
@@ -336,11 +411,9 @@ REST.prototype.configureExpress = function(connection) {
     });
 
     router.post("/product", function(req, res) {
-        var query = "INSERT INTO product(shopID, barcode, name, qty, type,imgName) VALUES(?, ?, ?, ?, ?, ?)";
+        var query = "INSERT INTO product(shopID, qty, type,imgName) VALUES( ?, ?, ?, ?)";
         var table = [
             req.body.shopID,
-            req.body.barcode,
-            req.body.name,
             req.body.qty,
             req.body.type,
             req.body.imgName
@@ -352,30 +425,377 @@ REST.prototype.configureExpress = function(connection) {
                 console.log(query);
                 console.log("error occur");
             } else {
-                res.json({"Error": false, "Message": "Success Added"});
+                let query2 = "SELECT productID from product WHERE shopID = ? ORDER BY productID DESC LIMIT 1";
+                let table2 = [req.body.shopID];
+                query2 = mysql.format(query2, table2);
+                connection.query(query2, function(err, rows) {
+                    if (err) {
+                        res.json({"Error": true, "Message": "Error executing MySQL query"});
+                        console.log(query2);
+                        console.log("error occur");
+                    }
+                    else{
+                        console.log(rows[0].productID);
+                        let productID = rows[0].productID;
+                        let q = "INSERT INTO productHistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)";
+                        let t =[
+                            productID,
+                            req.body.barcode,
+                            req.body.name,
+                            req.body.price,
+                            req.body.cost
+                        ];
+                        q = mysql.format(q,t);
+                        connection.query(q, function(err, rows){
+                            if (err) {
+                                res.json({"Error": true, "Message": "Error executing MySQL query"});
+                                console.log(query2);
+                                console.log("error occur");
+                            }
+                            else{
+                                res.json({"Error": false, "Message": "Success Added"});
+                            }
+                        });
+                    }
+                });
+
             }
         });
     });
 
-    router.put("/product", function(req, res){
-        let reqProduct = req.body;
-        let query = "UPDATE product SET ? WHERE userID = ?";
-        for(let i= 0 ; i < reqProduct.productDetail.length ; i++){
-
-        }
+    router.put("/product", function(req, res) {
+        let arr_promise = [];
+        console.log(req.body);
+        let p = new Promise(function(rsv, rej) {
+            console.log(req.body);
+            let query = "INSERT INTO productHistory(productID,name,barcode,price,cost) VALUES (?,?,?,?,?);";
+            let table = [
+                req.body.productID,
+                req.body.name,
+                req.body.barcode,
+                req.body.price,
+                req.body.cost
+            ];
+            query = mysql.format(query, table);
+            connection.query(query, function(err, rows) {
+                if (err) {
+                    rej( "error\n" + query);
+                } else {
+                    rsv( "Done\n" + query);
+                }
+            });
+        });
+        arr_promise.push(p);
+        let updateAt = new Date().toISOString().replace(/T/, ' ');
+        updateAt = updateAt.substring(0, updateAt.indexOf('.'));
+        console.log(updateAt);
+        let p2 = new Promise(function(rsv, rej) {
+            let query = "UPDATE product SET qty=? WHERE productID = ?";
+            let table = [
+                req.body.qty,
+                req.body.productID
+            ];
+            query = mysql.format(query, table);
+            connection.query(query, function(err, rows) {
+                if (err) {
+                    rej( "error\n" + query);
+                } else {
+                    rsv("Done\n" + query);
+                }
+            });
+        });
+        arr_promise.push(p2);
+        pAll = Promise.all(arr_promise);
+        pAll.then(function(value) {
+            console.log(value[0]);
+            res.json({"Error": false,"Message":"Success Edit"});
+        }, function(reason) {
+            console.log(reason);
+            res.json({"Error": true});
+        });
     });
 
     router.get("/product/:shop_id", function(req, res) {
-        var query = "SELECT * FROM product INNER JOIN product_history on product.productID = product_history.productID WHERE ??=? ";
-        var table = ["shopID", req.params.shop_id];
+        var query = "SELECT ph2.*,p.qty, p.type, p.imgName " +
+        "FROM " +
+        "( " +
+        "SELECT ph.productID, MAX(ph.createAt) AS lastedDate " +
+        "FROM `productHistory` ph INNER JOIN product p on p.productID = ph.productID  " +
+        "GROUP BY productID " +
+        ") ph1 " +
+        "JOIN `productHistory` ph2 ON (ph2.createAt = ph1.lastedDate AND ph2.productID = ph1.productID) " +
+        "INNER JOIN product p on ph2.productID = p.productID WHERE p.shopID = ? " +
+        "GROUP BY  ph2.productHistoryID";
+        var table = [req.params.shop_id];
         query = mysql.format(query, table);
         console.log(query);
         connection.query(query, function(err, rows) {
             if (err) {
+                console.log(query);
                 res.json({"Error": true, "Message": "Error executing MySQL query"});
                 console.log("error occur");
             } else {
+                console.log(query);
                 res.json({"Error": false, "Message": "Success", "Products": rows});
+            }
+        });
+    });
+
+    //**********
+    // START EXAMPLE SECTION
+    //**********
+    router.post("/product2", function(req, res) {
+        let jsoBody;
+        let temp;
+        var fstream;
+        var picName= "temp1";
+        console.log("in busboy");
+        req.pipe(req.busboy);
+        console.log("after pipe");
+        req.busboy.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
+            console.log('Field [' + fieldname + ']: value: ' + inspect(val));
+            jsoBody = inspect(val);
+            console.log("in field");
+            console.log(jsoBody);
+            jsoBody = jsoBody.substring(1,(jsoBody.length)-1);
+            temp = JSON.parse(jsoBody);
+            console.log(temp);
+            // req.pause();
+            var query = "INSERT INTO product(shopID, qty, type) VALUES( ?, ?, ?)";
+            var table = [
+                temp.shopID,
+                temp.qty,
+                temp.type
+            ];
+            query = mysql.format(query, table);
+            connection.query(query, function(err, rows) {
+                if (err) {
+                    res.json({"Error": true, "Message": "Error executing MySQL query"});
+                    console.log(query);
+                    console.log("error occur");
+                } else {
+                    let query2 = "SELECT productID from product WHERE shopID = ? ORDER BY productID DESC LIMIT 1";
+                    let table2 = [temp.shopID];
+                    query2 = mysql.format(query2, table2);
+                    connection.query(query2, function(err, rows) {
+                        if (err) {
+                            res.json({"Error": true, "Message": "Error executing MySQL query"});
+                            console.log(query2);
+                            console.log("error occur");
+                        }
+                        else{
+                            console.log(rows);
+                            console.log(rows[0].productID);
+                            let arr_promise = [];
+                            let productID = rows[0].productID;
+                            // picName = productID;
+                            // console.log("picNmae"+picName);
+                            let p = new Promise(function(rsv, rej) {
+                                let q = "INSERT INTO productHistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)";
+                                let t =[
+                                    productID,
+                                    temp.barcode,
+                                    temp.name,
+                                    temp.price,
+                                    temp.cost
+                                ];
+                                q = mysql.format(q,t);
+                                connection.query(q, function(err, rows){
+                                    if (err) {
+                                        rej( "error\n" + query);
+                                    } else {
+
+                                        rsv( "Done\n" + query);
+                                    }
+                                });
+                            });
+                            arr_promise.push(p);
+                            pAll = Promise.all(arr_promise);
+                            pAll.then(function(value) {
+                                console.log(value[0]);
+                                fs.rename(__dirname + '/upload/'+picName , __dirname + '/upload/img_'+productID+'.png', function(err) {
+                                    if ( err ) console.log('ERROR: ' + err);
+                                });
+                                let img = "img_"+productID+".png";
+                                let q = "UPDATE product SET imgName = ? WHERE productID = ?";
+                                let t =[
+                                    img,productID
+                                ];
+                                q = mysql.format(q,t);
+                                connection.query(q, function(err, rows){
+                                    if (err) {
+                                        res.json({"Error": true, "Message": "error set picname"});
+                                    } else {
+                                        let img = "img_"+productID+".png";
+                                        let q = "SELECT createAt FROM product WHERE productID = ?";
+                                        let t =[
+                                            productID
+                                        ];
+                                        q = mysql.format(q,t);
+                                        connection.query(q, function(err, rows){
+                                            if (err) {
+                                                res.json({"Error": true, "Message": "error set picname"});
+                                            }
+                                            else{
+                                                res.json({
+                                                    "Error": false,
+                                                    "imgName": img,
+                                                    "productID":productID,
+                                                    "shopID":temp.shopID,
+                                                    "qty":temp.qty,
+                                                    "type":temp.type,
+                                                    "barcode":temp.barcode,
+                                                    "name":temp.name,
+                                                    "price":temp.price,
+                                                    "cost":temp.cost,
+                                                    "details":temp.details,
+                                                    "createAt":rows[0].createAt
+                                                });
+                                            }
+                                        });
+                                    }
+                                });
+
+                            }, function(reason) {
+                                console.log(reason);
+                                res.json({"Error": true});
+                            });
+                        }
+                    });
+
+                }
+            });
+        });
+        req.busboy.on('file', function(fieldname, file, filename, encoding, mimetype) {
+            console.log("Uploading: " + filename);
+            console.log(picName);
+            console.log('File [' + fieldname + ']: filename: ' + filename + ', encoding: ' + encoding + ', mimetype: ' + mimetype);
+            fstream = fs.createWriteStream(__dirname + '/upload/' + picName);
+            file.pipe(fstream);
+            fstream.on('close', function () {
+                console.log("Done savefile");
+            });
+        });
+
+
+    });
+
+    router.post("/upload", function (req, res) {
+            var fstream;
+            console.log("uploading");
+            req.pipe(req.busboy);
+            req.busboy.on('file', function (fieldname, file, filename) {
+                console.log("Uploading: " + filename);
+                //Path where image will be uploaded
+                fstream = fs.createWriteStream(__dirname + '/img/' + filename);
+                file.pipe(fstream);
+                fstream.on('close', function () {
+                    console.log("Upload Finished of " + filename);
+                    res.json({"Message":"Done"});          //where to go next
+                });
+            });
+        });
+    router.post('/upload2', function (req, res) {
+        var tempPath = req.files.file.path,
+            targetPath = path.resolve('./uploads/image.png');
+        if (path.extname(req.files.file.name).toLowerCase() === '.png') {
+            fs.rename(tempPath, targetPath, function(err) {
+                if (err) throw err;
+                console.log("Upload completed!");
+            });
+        } else {
+            fs.unlink(tempPath, function () {
+                if (err) throw err;
+                console.error("Only .png files are allowed!");
+            });
+        }
+        // ...
+    });
+    router.post('/fileupload', function(req, res) {
+        var fstream;
+        console.log(req.busboy.field);
+        req.pipe(req.busboy);
+        console.log("upload");
+        console.log(__dirname);
+        let i = 0;
+        req.busboy.on('field', function(fieldname, val, fieldnameTruncated, valTruncated) {
+            console.log('Field [' + fieldname + ']: value: ' + inspect(val));
+            console.log("next");
+            console.log(i);
+            i++;
+        });
+        req.busboy.on('file', function(fieldname, file, filename, encoding, mimetype) {
+            console.log("Uploading: " + filename);
+            console.log('File [' + fieldname + ']: filename: ' + filename + ', encoding: ' + encoding + ', mimetype: ' + mimetype);
+            fstream = fs.createWriteStream(__dirname + '/upload/' + filename);
+            file.pipe(fstream);
+            fstream.on('close', function () {
+                res.json({"MEE":"Done"});
+            });
+        });
+
+    });
+    router.get("/test", function(req, res) {
+        let query = "SELECT barcode, name, productID FROM product";
+        connection.query(query, function(err, rows) {
+            if (err) {
+                console.log(query);
+                res.json({"Error": true, "Message": "Error executing MySQL query"});
+            } else {
+                console.log(query);
+                res.json({"Error": false, "Message": "Success", "Products": rows});
+            }
+        });
+    });
+
+    router.post("/test", function(req, res) {
+        var reqProduct = req.body;
+        let query = "";
+        let arr_promise = [];
+        for (var i = 0; i < reqProduct.Products.length; i++) {
+            console.log(i);
+            console.log(reqProduct.Products[i]);
+            console.log("in loop");
+            console.log("productID" + reqProduct.Products[i].productID);
+            let p = new Promise(function(rsv, rej) {
+                let j = i;
+                let query = "INSERT INTO productHistory(productID,name,barcode) VALUES (?,?,?);";
+                var table = [reqProduct.Products[i].productID, reqProduct.Products[i].name, reqProduct.Products[i].barcode];
+                query = mysql.format(query, table);
+                connection.query(query, function(err, rows) {
+                    if (err) {
+                        rej(j + "error\n" + query);
+                    } else {
+                        rsv(j + "Done\n" + query);
+                    }
+                });
+            });
+            arr_promise.push(p);
+        }
+        pAll = Promise.all(arr_promise);
+        pAll.then(function(value) {
+            console.log(value[0]);
+            res.json({"Error": false});
+        }, function(reason) {
+            console.log(reason);
+            res.json({"Error": true});
+        });
+    });
+    router.post("/users", function(req, res) {
+        var query = "INSERT INTO ??(??,??) VALUES (?,?)";
+        var table = [
+            "user_login",
+            "user_email",
+            "user_password",
+            req.body.email,
+            md5(req.body.password)
+        ];
+        query = mysql.format(query, table);
+        connection.query(query, function(err, rows) {
+            if (err) {
+                res.json({"Error": true, "Message": "Error executing MySQL query"});
+            } else {
+                res.json({"Error": false, "Message": "User Added !"});
             }
         });
     });
@@ -405,6 +825,7 @@ REST.prototype.configureExpress = function(connection) {
             }
         });
     });
+
     router.put("/users", function(req, res) {
         var query = "UPDATE ?? SET ?? = ? WHERE ?? = ?";
         var table = [
@@ -426,6 +847,7 @@ REST.prototype.configureExpress = function(connection) {
             }
         });
     });
+
     router.delete("/users/:email", function(req, res) {
         var query = "DELETE from ?? WHERE ??=?";
         var table = ["user_login", "user_email", req.params.email];
