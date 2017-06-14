@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "RESTful-API",
   "version": "0.0.1",
   "scripts": {
@@ -12,5 +12,11 @@
     "express": "~4.12.2",
     "fs-extra": "^1.0.0",
     "mysql": "~2.5.5"
+  },
+  "devDependencies": {
+    "eslint": "^4.0.0",
+    "eslint-config-airbnb-base": "^11.2.0",
+    "eslint-config-google": "^0.8.0",
+    "eslint-plugin-import": "^2.3.0"
   }
 }
