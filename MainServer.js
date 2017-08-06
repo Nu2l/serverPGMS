@@ -292,8 +292,8 @@ REST.prototype.configureExpress = function (connection) {
             console.log(rows.length);
             let transaction_new = String(rows.length + 1);
             // console.log(transaction_new.length);
-            transaction_new = transaction_date + ('0000' + transaction_new).substring(transaction_new.length);
-            // console.log(transaction_new);
+            transaction_new = transaction_date + ('000' + reqProduct.shopID).substring(reqProduct.shopID.length) + ('0000' + transaction_new).substring(transaction_new.length);
+            console.log(transaction_new);
             // transaction_new = transaction_new;
             // console.log(transaction_count);
             var query = 'INSERT INTO transaction(transactionID, userID, shopID, total, discount, discountDetail) VALUES(?,?,?,?,?,?)';
