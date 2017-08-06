@@ -175,7 +175,6 @@ REST.prototype.configureExpress = function (connection) {
                             } else {
                                 let query2 = 'SELECT shop.shopID , user.userID FROM `shop` JOIN user WHERE userName = ? and shopName = ?';
                                 let table2 = [req.body.userName, req.body.shopName];
-
                                 query2 = mysql.format(query2, table2);
                                 console.log(query2);
                                 connection.query(query2, function (err, rows) {
@@ -194,7 +193,7 @@ REST.prototype.configureExpress = function (connection) {
                                             if (err) {
                                                 res.json({'Error': true, 'Message': 'Error executing MySQL query'});
                                             } else {
-                                                res.json({'Error': false, 'Message': 'Your shop has bee created !', 'userID': userID, 'shopID': shopID});
+                                                res.json({'Error': false, 'Message': 'Your shop has been created !', 'userID': userID, 'shopID': shopID, 'username' :req.body.userName, "type":"owner"});
                                             }
                                         });
                                     }
@@ -210,7 +209,7 @@ REST.prototype.configureExpress = function (connection) {
                     console.log(shopID);
                     if (rows[0].keyShop == pass) {
                         if (role == 'owner') {
-                            res.json({'Error': false, 'Message': 'Please contact your real owner to become owner!'});
+                            res.json({'Error': false, 'Message': 'Sorry this name already exist!'});
                             return;
                         } else {
                             let queryUpdate = 'UPDATE user SET shopID = ?,type = \'employee\' WHERE username = ?';
@@ -223,7 +222,7 @@ REST.prototype.configureExpress = function (connection) {
                                 }
                             });
                         }
-                        let query2 = 'SELECT shop.shopID , user.userID FROM `shop` JOIN user WHERE userName = ? and shopName = ?';
+                        let query2 = 'SELECT shop.shopID , user.userID, user.type FROM `shop` JOIN user WHERE userName = ? and shopName = ?';
                         let table2 = [req.body.userName, req.body.shopName];
                         query2 = mysql.format(query2, table2);
                         connection.query(query2, function (err, rows) {
@@ -233,7 +232,7 @@ REST.prototype.configureExpress = function (connection) {
                             if (err) {
                                 res.json({'Error': true, 'Message': 'Error executing MySQL query'});
                             } else {
-                                res.json({'Error': false, 'Message': 'Welcome to our shop !', 'userID': rows[0].userID, 'shopID': rows[0].shopID});
+                                res.json({'Error': false, 'Message': 'Welcome to our shop !', 'userID': rows[0].userID, 'shopID': rows[0].shopID, 'type':rows[0].type});
                             }
                         });
                     } else {
