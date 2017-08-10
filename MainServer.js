@@ -275,6 +275,9 @@ REST.prototype.configureExpress = function (connection) {
         reqProduct.discount == null
             ? reqProduct.discount = 0
             : reqProduct.discount = reqProduct.discount;
+        reqProduct.method == null
+            ? reqProduct.method = 0
+            : reqProduct.method = reqProduct.method;
         reqProduct.discountDetail == null
             ? reqProduct.discountDetail = ' s'
             : reqProduct.discountDetail = reqProduct.discountDetail;
@@ -296,13 +299,14 @@ REST.prototype.configureExpress = function (connection) {
             console.log(transaction_new);
             // transaction_new = transaction_new;
             // console.log(transaction_count);
-            var query = 'INSERT INTO transaction(transactionID, userID, shopID, total, discount, discountDetail) VALUES(?,?,?,?,?,?)';
+            var query = 'INSERT INTO transaction(transactionID, userID, shopID, total, discount, method, discountDetail) VALUES(?,?,?,?,?,?,?)';
             var table = [
                 transaction_new,
                 reqProduct.userID,
                 reqProduct.shopID,
                 reqProduct.total,
                 reqProduct.discount,
+                reqProduct.method,
                 reqProduct.discountDetail
             ];
             query = mysql.format(query, table);
@@ -369,7 +373,7 @@ REST.prototype.configureExpress = function (connection) {
         });
     });
     router.get('/transaction/:shopID', function (req, res) {
-        let lQuery = 'SELECT  t.transactionID, t.refTransactionID, u.username, t.total, t.discount, t.discountDetail, t.status, t.createAt from transaction t INNER JOIN user u on t.userID = u.userID WHERE t.shopID = ?';
+        let lQuery = 'SELECT  t.transactionID, t.refTransactionID, u.username, t.total, t.discount, t.discountDetail, t.status, t.method, t.createAt from transaction t INNER JOIN user u on t.userID = u.userID WHERE t.shopID = ?';
         let lTable = [req.params.shopID];
         lQuery = mysql.format(lQuery, lTable);
         connection.query(lQuery, function (err, rows) {
