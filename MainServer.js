@@ -24,7 +24,7 @@ REST.prototype.connectMysql = function () {
         connectionLimit: 100,
         host: 'localhost',
         user: 'root',
-        password: '123456',
+        password: '06012538',
         dateStrings: 'true',
         database: 'admin_pgms',
         debug: false
@@ -329,7 +329,7 @@ REST.prototype.configureExpress = function (connection) {
                         let qty = reqProduct.productList[i].qty;
                         let p = new Promise(function (rsv, rej) {
                             let j = i;
-                            let query = 'INSERT INTO transactionDetail(transactionID,productID,qty) VALUES (?,?,?);';
+                            let query = 'INSERT INTO transactiondetail(transactionID,productID,qty) VALUES (?,?,?);';
                             var table = [transaction_new, reqProduct.productList[i].productID, reqProduct.productList[i].qty];
                             query = mysql.format(query, table);
                             connection.query(query, function (err, rows) {
@@ -387,8 +387,8 @@ REST.prototype.configureExpress = function (connection) {
         });
     });
 
-    router.get('/transactionDetail/:transactionID/:createAt', function (req, res) {
-        let lQuery = 'SELECT td.*, ph2.name, ph2.price,ph2.cost FROM ( SELECT productID ,MAX(createAt) AS createProduct FROM `productHistory` WHERE createAt <= ? GROUP BY productID ) ph1 JOIN `productHistory` ph2 ON (ph2.productID = ph1.productID AND ph1.createProduct = ph2.createAt ) INNER JOIN transactionDetail td ON td.productID = ph2.productID WHERE td.transactionID = ? ORDER BY td.transactionID';
+    router.get('/transactiondetail/:transactionID/:createAt', function (req, res) {
+        let lQuery = 'SELECT td.*, ph2.name, ph2.price,ph2.cost FROM ( SELECT productID ,MAX(createAt) AS createProduct FROM `producthistory` WHERE createAt <= ? GROUP BY productID ) ph1 JOIN `producthistory` ph2 ON (ph2.productID = ph1.productID AND ph1.createProduct = ph2.createAt ) INNER JOIN transactiondetail td ON td.productID = ph2.productID WHERE td.transactionID = ? ORDER BY td.transactionID';
         let lTable = [
             req.params.createAt.replace('T', ' '),
             req.params.transactionID
@@ -399,7 +399,7 @@ REST.prototype.configureExpress = function (connection) {
                 res.json({'Error': true, 'Message': 'Error executing MySQL query'});
                 console.log(lQuery);
             } else {
-                res.json({'Error': false, 'Message': 'Success', 'transactionDetail': rows});
+                res.json({'Error': false, 'Message': 'Success', 'transactiondetail': rows});
                 console.log(lQuery);
             }
         });
@@ -443,7 +443,7 @@ REST.prototype.configureExpress = function (connection) {
                     } else {
                         console.log(rows[0].productID);
                         let productID = rows[0].productID;
-                        let q = 'INSERT INTO productHistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)';
+                        let q = 'INSERT INTO producthistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)';
                         let t = [productID, req.body.barcode, req.body.name, req.body.price, req.body.cost];
                         q = mysql.format(q, t);
                         connection.query(q, function (err, rows) {
@@ -466,7 +466,7 @@ REST.prototype.configureExpress = function (connection) {
         console.log(req.body);
         let p = new Promise(function (rsv, rej) {
             console.log(req.body);
-            let query = 'INSERT INTO productHistory(productID,name,barcode,price,cost) VALUES (?,?,?,?,?);';
+            let query = 'INSERT INTO producthistory(productID,name,barcode,price,cost) VALUES (?,?,?,?,?);';
             let table = [req.body.productID, req.body.name, req.body.barcode, req.body.price, req.body.cost];
             query = mysql.format(query, table);
             connection.query(query, function (err, rows) {
@@ -509,12 +509,12 @@ REST.prototype.configureExpress = function (connection) {
         'FROM ' +
         '( ' +
         'SELECT ph.productID, MAX(ph.createAt) AS lastedDate ' +
-        'FROM `productHistory` ph INNER JOIN product p on p.productID = ph.productID  ' +
+        'FROM `producthistory` ph INNER JOIN product p on p.productID = ph.productID  ' +
         'GROUP BY productID ' +
         ') ph1 ' +
-        'JOIN `productHistory` ph2 ON (ph2.createAt = ph1.lastedDate AND ph2.productID = ph1.productID) ' +
+        'JOIN `producthistory` ph2 ON (ph2.createAt = ph1.lastedDate AND ph2.productID = ph1.productID) ' +
         'INNER JOIN product p on ph2.productID = p.productID WHERE p.shopID = ? ' +
-        'GROUP BY  ph2.productHistoryID';
+        'GROUP BY  ph2.producthistoryID';
         var table = [req.params.shop_id];
         query = mysql.format(query, table);
         console.log(query);
@@ -573,7 +573,7 @@ REST.prototype.configureExpress = function (connection) {
                             // picName = productID;
                             // console.log("picNmae"+picName);
                             let p = new Promise(function (rsv, rej) {
-                                let q = 'INSERT INTO productHistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)';
+                                let q = 'INSERT INTO producthistory(productID, barcode, name, price, cost) VALUES (?, ?, ?, ?, ?)';
                                 let t = [productID, temp.barcode, temp.name, temp.price, temp.cost];
                                 q = mysql.format(q, t);
                                 connection.query(q, function (err, rows) {
