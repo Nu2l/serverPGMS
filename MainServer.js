@@ -24,7 +24,7 @@ REST.prototype.connectMysql = function () {
         connectionLimit: 100,
         host: 'localhost',
         user: 'root',
-        password: '06012538',
+        password: '123456',
         dateStrings: 'true',
         database: 'admin_pgms',
         debug: false
@@ -419,6 +419,21 @@ REST.prototype.configureExpress = function (connection) {
             } else {
                 res.json({'Error': false, 'Message': 'Success', 'Products': rows});
             }
+        });
+    });
+
+    router.get('/product/:shopID/:fileName', function(req, res){
+        res.download(__dirname+'/upload/'+req.params.shopID+'/'+req.params.fileName, function(err){
+          if (err) {
+            // Handle error, but keep in mind the response may be partially-sent
+            // so check res.headersSent
+            console.log(__dirname+'/upload/'+req.params.shopID+'/'+req.params.fileName);
+            console.log("cant download "+req.params.shopID+'/'+req.params.fileName);
+            res.json({'Error': true, 'Message': 'Error executing MySQL query'});
+          } else {
+              console.log("downloading "+req.params.shopID+'/'+req.params.fileName);
+            // decrement a download credit, etc.
+          }
         });
     });
 
