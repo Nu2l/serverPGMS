@@ -481,8 +481,10 @@ REST.prototype.configureExpress = function (connection) {
     });
 
     router.post('/product', function (req, res) {
-        var query = 'INSERT INTO product(shopID, qty, type,imgName) VALUES( ?, ?, ?, ?)';
-        var table = [req.body.shopID, req.body.qty, req.body.type, req.body.imgName];
+        let dateNow = new Date().toISOString().replace(/T/, ' ');
+        dateNow = dateNow.substring(0, dateNow.indexOf('.'));
+        var query = 'INSERT INTO product(shopID, qty, type,imgName, createAt) VALUES( ?, ?, ?, ?, ?)';
+        var table = [req.body.shopID, req.body.qty, req.body.type, req.body.imgName,dateNow];
         query = mysql.format(query, table);
         connection.query(query, function (err, rows) {
             if (err) {
