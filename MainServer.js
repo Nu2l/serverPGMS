@@ -563,7 +563,7 @@ REST.prototype.configureExpress = function (connection) {
     });
 
     router.get('/product/:shop_id', function (req, res) {
-        var query = 'SELECT ph2.*,p.qty, p.type, p.imgName ' +
+        var query = 'SELECT ph2.*,p.qty, p.type, p.imgName, p.createAt' +
         'FROM ' +
         '( ' +
         'SELECT ph.productID, MAX(ph.createAt) AS lastedDate ' +
